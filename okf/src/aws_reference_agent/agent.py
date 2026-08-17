@@ -124,6 +124,8 @@ def build_source_options(
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
 
@@ -152,6 +154,8 @@ def build_web_options(model: str = DEFAULT_MODEL) -> ClaudeAgentOptions:
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
 
@@ -186,6 +190,8 @@ def build_git_options(model: str = DEFAULT_MODEL) -> ClaudeAgentOptions:
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
 
@@ -216,6 +222,8 @@ def build_cube_options(model: str = DEFAULT_MODEL) -> ClaudeAgentOptions:
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
 
@@ -246,6 +254,8 @@ def build_wiki_options(model: str = DEFAULT_MODEL) -> ClaudeAgentOptions:
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
 
@@ -276,5 +286,7 @@ def build_docs_options(model: str = DEFAULT_MODEL) -> ClaudeAgentOptions:
         mcp_servers={_SERVER_NAME: server},
         allowed_tools=allowed,
         tools=[],
+        strict_mcp_config=True,
+        permission_mode="dontAsk",
         model=model,
     )
