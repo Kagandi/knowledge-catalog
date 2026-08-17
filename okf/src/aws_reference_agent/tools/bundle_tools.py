@@ -36,6 +36,7 @@ _PREFERRED_KEY_ORDER = (
     "verified",
     "stale_after",
     "sources",
+    "pii",
     "usage_window",
 )
 

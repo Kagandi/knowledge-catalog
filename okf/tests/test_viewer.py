@@ -47,6 +47,9 @@ def _make_bundle(root: Path) -> None:
         stale_after: '2020-01-01'
         sources:
           - {id: bq, resource: 'https://example.com/users', title: BigQuery}
+        pii:
+          - {column: email, label: pii, confidence: high}
+          - {column: customer_id, label: suspected_pii, confidence: low}
         ---
         Joinable with [events](events.md) and see [DAU](../references/metrics/dau.md).
         """,
@@ -182,6 +185,21 @@ def test_v02_signals_appear_in_graph_payload(tmp_path: Path):
     assert users["generated"]["by"] == "aws_reference_agent/sonnet"
     assert len(users["verified"]) == 2
     assert users["sources"][0]["id"] == "bq"
+
+
+def test_pii_appears_in_graph_payload(tmp_path: Path):
+    bundle = tmp_path / "bundle"
+    _make_bundle(bundle)
+    out = tmp_path / "viz.html"
+    generate_visualization(bundle, out)
+    data = _extract_bundle_data(out.read_text(encoding="utf-8"))
+    users = {n["data"]["id"]: n["data"] for n in data["nodes"]}["tables/users"]
+    assert users["pii"] == [
+        {"column": "email", "label": "pii", "confidence": "high"},
+        {"column": "customer_id", "label": "suspected_pii", "confidence": "low"},
+    ]
+    events = {n["data"]["id"]: n["data"] for n in data["nodes"]}["tables/events"]
+    assert events["pii"] == []
 
 
 def test_raises_when_bundle_missing(tmp_path: Path):

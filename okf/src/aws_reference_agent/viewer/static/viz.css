@@ -119,6 +119,24 @@ dl.frontmatter a { color: #2563eb; word-break: break-all; }
 .badge.trust-human-reviewed { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
 .badge.stale { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 .badge.fresh { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.badge.pii-pii { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.badge.pii-suspected_pii { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.badge.pii-sensitive { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+
+#detail-pii { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.schema-pii-marker {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.schema-pii-marker.pii-pii { background: #fef2f2; color: #b91c1c; }
+.schema-pii-marker.pii-suspected_pii { background: #fffbeb; color: #b45309; }
+.schema-pii-marker.pii-sensitive { background: #f5f3ff; color: #6d28d9; }
 
 .sources-list { padding-left: 18px; margin: 0; }
 .sources-list li { margin: 1px 0; }

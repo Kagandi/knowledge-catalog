@@ -8,6 +8,7 @@ from aws_reference_agent.bundle.document import (
     OKFDocument,
     OKFDocumentError,
     is_stale,
+    normalize_pii,
     normalize_verified,
     trust_tier,
 )
@@ -92,3 +93,43 @@ def test_is_stale():
     assert is_stale({"stale_after": "2026-09-24"}, today=ref) is False
     assert is_stale({}, today=ref) is False
     assert is_stale({"stale_after": "not-a-date"}, today=ref) is False
+
+
+def test_normalize_pii_treats_bare_mapping_as_list():
+    fm = {"pii": {"column": "email", "label": "pii", "confidence": "high"}}
+    assert normalize_pii(fm) == [
+        {"column": "email", "label": "pii", "confidence": "high"}
+    ]
+    assert normalize_pii({}) == []
+
+
+def test_normalize_pii_list():
+    fm = {
+        "pii": [
+            {"column": "email", "label": "pii", "confidence": "high"},
+            {"column": "customer_id", "label": "suspected_pii", "confidence": "low"},
+        ]
+    }
+    assert normalize_pii(fm) == fm["pii"]
+
+
+def test_roundtrip_preserves_pii_frontmatter():
+    src = (
+        "---\n"
+        "type: Glue Table\n"
+        "title: Users\n"
+        "pii:\n"
+        "  - { column: email, label: pii, confidence: high }\n"
+        "  - { column: annual_revenue, label: sensitive, confidence: high }\n"
+        "---\n"
+        "\n"
+        "# Schema\n"
+    )
+    doc = OKFDocument.parse(src)
+    assert normalize_pii(doc.frontmatter) == [
+        {"column": "email", "label": "pii", "confidence": "high"},
+        {"column": "annual_revenue", "label": "sensitive", "confidence": "high"},
+    ]
+
+    reparsed = OKFDocument.parse(doc.serialize())
+    assert reparsed.frontmatter == doc.frontmatter

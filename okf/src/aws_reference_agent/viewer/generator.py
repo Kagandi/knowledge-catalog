@@ -11,6 +11,7 @@ from aws_reference_agent.bundle.document import (
     OKFDocument,
     OKFDocumentError,
     is_stale,
+    normalize_pii,
     normalize_verified,
     trust_tier,
 )
@@ -55,6 +56,7 @@ class Concept:
     verified: list[dict[str, Any]] = field(default_factory=list)
     stale_after: str = ""
     sources: list[dict[str, Any]] = field(default_factory=list)
+    pii: list[dict[str, Any]] = field(default_factory=list)
     trust_tier: str = "unverified"
     stale: bool = False
     links_to: list[str] = field(default_factory=list)
@@ -77,6 +79,7 @@ class Concept:
                 "verified": self.verified,
                 "stale_after": self.stale_after,
                 "sources": self.sources,
+                "pii": self.pii,
                 "trust_tier": self.trust_tier,
                 "stale": self.stale,
                 "color": color,
@@ -140,6 +143,7 @@ def _walk_concepts(bundle_root: Path) -> list[Concept]:
             verified=normalize_verified(fm),
             stale_after=str(fm.get("stale_after") or ""),
             sources=[s for s in sources if isinstance(s, dict)],
+            pii=normalize_pii(fm),
             trust_tier=trust_tier(fm),
             stale=is_stale(fm),
             links_to=_extract_links(doc.body or "", md_path.parent, bundle_root),

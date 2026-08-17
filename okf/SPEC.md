@@ -1,6 +1,6 @@
 # Open Knowledge Format (OKF)
 
-**Version 0.2**
+**Version 0.3**
 
 OKF is an open, human- and agent-friendly format for representing
 *knowledge*: the metadata, context, and curated insight that surrounds
@@ -13,8 +13,8 @@ no required tooling. If you can `cat` a file, you can read OKF; if you
 can `git clone` a repo, you can ship it.
 
 This document is self-contained: it specifies everything needed to
-produce and consume OKF v0.2. A summary of what changed from v0.1 is in
-§13.
+produce and consume OKF v0.3. A summary of what changed from v0.1 is in
+§13, and from v0.2 in §14.
 
 ---
 
@@ -429,6 +429,41 @@ Optional. An absolute date (`YYYY-MM-DD`). A concept is stale when
 staleness decision a plain date comparison with no reference to when the
 concept was read.
 
+### 5.6 PII and sensitivity marking
+
+```yaml
+pii:
+  - { column: user_email, label: pii, confidence: high }
+  - { column: customer_id, label: suspected_pii, confidence: low }
+  - { column: annual_revenue, label: sensitive, confidence: high }
+```
+
+Optional. A list of per-column markers on a concept whose `# Schema`
+describes tabular data. A single entry MAY be written as one bare `{ column,
+label, confidence }` mapping without the list dash; consumers MUST treat a
+bare mapping as a one-element list (same convention as `verified`, §5.2).
+
+- `column`: the field name, matching a name in the concept's `# Schema`.
+- `label`: one of:
+  - `pii` — a direct or quasi personal identifier (name, email, phone
+    number, national ID, physical address, date of birth, government ID,
+    biometric identifier, precise geolocation, zip/postal code, job title,
+    employer name, IP address, device ID), or personal financial/health
+    data (payment card number, bank account number, medical/diagnosis
+    fields).
+  - `suspected_pii` — a plausible but inconclusive signal, or an opaque
+    internal surrogate key (e.g. a `customer_id` foreign key) that is not
+    identifying by itself but joins back to a person elsewhere in the
+    bundle.
+  - `sensitive` — business-confidential data that is not about an
+    individual (revenue figures, internal pricing, salary/compensation).
+- `confidence`: `high` or `low`.
+
+This field's scope ends at producing the label. Masking, access control,
+and human review of a flagged column are the responsibility of whatever
+downstream system consumes the flag; this concept remains fully consumable
+without it (§11).
+
 ---
 
 ## 6. Cross-linking and paths
@@ -762,7 +797,7 @@ particular, consumers MUST NOT reject a bundle because of:
 
 ## 12. Versioning
 
-This document specifies OKF version **0.2**. Revisions are versioned as
+This document specifies OKF version **0.3**. Revisions are versioned as
 `<major>.<minor>`:
 
 - A **minor** version bump introduces backward-compatible additions (new
@@ -770,7 +805,7 @@ This document specifies OKF version **0.2**. Revisions are versioned as
 - A **major** version bump may make breaking changes (renaming required
   fields, changing reserved filenames).
 
-Bundles MAY declare the version they target with `okf_version: "0.2"` in a
+Bundles MAY declare the version they target with `okf_version: "0.3"` in a
 bundle-root `index.md` frontmatter block (the only place frontmatter is
 permitted in an `index.md`). Consumers that do not understand the declared
 version SHOULD attempt best-effort consumption rather than refusing the
@@ -825,6 +860,21 @@ Everything else (bundle structure, reserved filenames, the required
 `type`, recommended `title`/`description`/`resource`/`tags`, cross-linking,
 index files, log files, permissive conformance) is carried forward
 unchanged.
+
+---
+
+## 14. Changes from v0.2
+
+v0.3 supersedes OKF v0.2 and is a minor version bump under §12: purely
+additive, with no renamed or retired fields. A v0.2 bundle is a fully
+conformant v0.3 bundle as-is.
+
+### 14.1 Additive changes
+
+- New frontmatter family `pii`: per-column PII/sensitivity markers, each an
+  optional `{column, label, confidence}` entry (§5.6).
+
+Everything else is carried forward unchanged.
 
 ---
 

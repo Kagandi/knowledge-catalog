@@ -42,6 +42,43 @@ Only `type` is strictly required; the rest are strongly recommended.
 - `sources` (recommended): where the content derives from — see "Sources and
   attribution" below. Provenance lives here, **not** in a `# Citations` body
   section.
+- `pii` (optional): a list of `{column, label, confidence}` entries flagging
+  sensitive columns — see "PII marking" below. Omit the field entirely when
+  no column qualifies; do not write an empty list.
+
+## PII marking
+
+Evaluate every column returned by `read_concept_raw` for personal or
+business-sensitive content, using the column name and, when you called
+`sample_rows`, the observed values. For each column that qualifies, add one
+`{column, label, confidence}` entry to the `pii` frontmatter list.
+`confidence` is `high` or `low` only.
+
+- **`label: pii`** — a direct or quasi personal identifier, or personal
+  financial/health data:
+  - Direct identifiers: name, email, phone number, SSN/national ID, physical
+    address, date of birth, government ID, biometric identifiers, precise
+    geolocation.
+  - Quasi-identifiers (re-identifying in combination with other data):
+    zip/postal code, job title, employer name, IP address, device ID.
+  - Personal financial/health data: payment card number, bank account
+    number, medical/diagnosis/health-condition fields.
+  - A clear match by name or by observed value shape (email format, phone
+    format, national-ID-like patterns) → `confidence: high`.
+- **`label: suspected_pii`** — a plausible but inconclusive signal (ambiguous
+  name, no samples pulled, mixed/absent values), always `confidence: low`.
+  This also covers opaque internal surrogate keys used only as foreign keys
+  (e.g. `customer_id`, `user_id`): not identifying by themselves, but they
+  join back to a person elsewhere in the bundle, so always mark these
+  `suspected_pii` / `confidence: low`.
+- **`label: sensitive`** — business-confidential data that is **not** about
+  an individual: revenue figures, internal pricing, salary/compensation, and
+  similar confidential-but-not-personal columns.
+
+Do not guess: a column with no name or value signal for any of the above is
+simply left out of the list. This catalog's job stops at producing the
+label — masking, access control, or human review of the flagged column is a
+downstream concern, not something to note in the body prose.
 
 ## Body sections
 
@@ -50,9 +87,16 @@ In this order:
 1. A short prose description (1–3 paragraphs) of what this concept is, what it
    represents, and how it is typically used. For tables, describe the grain
    (one row per X), the time range, and any obfuscation or sampling caveats.
-2. `# Schema` — a flattened, readable summary of fields. For nested RECORD
-   fields, indent or table-format their sub-fields. Skip mode/type when they
-   are obvious. Highlight repeated records explicitly.
+2. `# Schema` — a markdown table with columns `Column`, `Type`, `Notes`, one
+   row per top-level field: `| \`column_name\` | type | notes |`. Always
+   wrap the field name in backticks in the `Column` cell — this is required,
+   not stylistic: the SQL schema-consistency guard (`write_concept_doc`) and
+   the bundle viewer's PII marker both key off backtick-wrapped field names
+   inside this section, and an unwrapped name will silently fail to match
+   either. For nested RECORD fields, add each sub-field as its own row named
+   `` `parent.child` ``. Leave `Type` blank when it isn't meaningful, but
+   never leave `Notes` blank for a field that has a `pii` frontmatter entry.
+   Highlight repeated (array) records explicitly in `Notes`.
 3. `# Common query patterns` — 1 to 3 short SQL snippets, fenced as
    ```` ```sql ```` blocks, illustrating realistic usage of this asset.
    Before writing each snippet, call `validate_query` with the SQL. If it

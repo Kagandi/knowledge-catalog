@@ -112,6 +112,22 @@ def test_generated_by_and_at_are_preserved_when_supplied(tmp_path):
     }
 
 
+def test_pii_frontmatter_is_preserved(tmp_path):
+    _set_ctx(tmp_path)
+    pii = [
+        {"column": "email", "label": "pii", "confidence": "high"},
+        {"column": "customer_id", "label": "suspected_pii", "confidence": "low"},
+    ]
+    result = write_concept_doc(
+        "tables/users",
+        _good_frontmatter(pii=pii),
+        _bq_body(["id", "email", "customer_id"]),
+    )
+    assert "error" not in result
+    doc = OKFDocument.parse((tmp_path / "tables" / "users.md").read_text(encoding="utf-8"))
+    assert doc.frontmatter["pii"] == pii
+
+
 def test_web_pass_rejects_schema_shrinkage(tmp_path):
     _set_ctx(tmp_path)
     # Simulate the BQ pass having already written the doc.

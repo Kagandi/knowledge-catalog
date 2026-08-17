@@ -79,6 +79,23 @@ def normalize_verified(frontmatter: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def normalize_pii(frontmatter: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the `pii` entries as a list (OKF v0.3 §5.6).
+
+    A single entry MAY be written as one `{ column, label, confidence }`
+    mapping without the list dash; consumers MUST treat a bare mapping as a
+    one-element list (mirrors `normalize_verified`).
+    """
+    pii = frontmatter.get("pii")
+    if pii is None:
+        return []
+    if isinstance(pii, dict):
+        return [pii]
+    if isinstance(pii, list):
+        return [p for p in pii if isinstance(p, dict)]
+    return []
+
+
 def trust_tier(frontmatter: dict[str, Any]) -> str:
     """Derive a concept's trust tier from `verified` (OKF v0.2 §5.3).
 

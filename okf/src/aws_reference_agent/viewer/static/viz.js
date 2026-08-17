@@ -246,11 +246,28 @@
       sourcesEl.textContent = "—";
     }
 
+    const piiEl = document.getElementById("detail-pii");
+    piiEl.innerHTML = "";
+    const pii = data.pii || [];
+    const piiByColumn = {};
+    if (pii.length) {
+      for (const p of pii) {
+        piiByColumn[p.column] = p;
+        const span = document.createElement("span");
+        span.className = "badge pii-" + p.label;
+        span.textContent = `${p.column}: ${p.label.replace("_", " ")} (${p.confidence})`;
+        piiEl.appendChild(span);
+      }
+    } else {
+      piiEl.textContent = "—";
+    }
+
     const body = bundle.bodies[conceptId] || "";
     const html = marked.parse(body, { breaks: false, gfm: true });
     const bodyEl = document.getElementById("detail-body");
     bodyEl.innerHTML = html;
     rewriteInternalLinks(bodyEl);
+    markPiiInSchema(bodyEl, piiByColumn);
 
     const bl = backlinks[conceptId] || [];
     const blSection = document.getElementById("detail-backlinks");
@@ -310,6 +327,48 @@
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener");
     });
+  }
+
+  const PII_MARKER_TEXT = {
+    pii: "PII",
+    suspected_pii: "PII?",
+    sensitive: "SENS",
+  };
+
+  function makePiiMarker(p) {
+    const marker = document.createElement("span");
+    marker.className = "schema-pii-marker pii-" + p.label;
+    marker.textContent = PII_MARKER_TEXT[p.label] || p.label;
+    marker.title = `${p.label} (confidence: ${p.confidence})`;
+    return marker;
+  }
+
+  // Mirrors the OKF `# Schema` section convention (bundle_tools._schema_field_names):
+  // a top-level `# Schema` heading, ending at the next top-level heading. Field
+  // names are backtick-wrapped by convention, but older docs sometimes list them
+  // as a bare markdown table's first column instead — match both shapes.
+  function markPiiInSchema(root, piiByColumn) {
+    if (!Object.keys(piiByColumn).length) return;
+    const heading = [...root.querySelectorAll("h1")].find(
+      (h) => h.textContent.trim().toLowerCase() === "schema",
+    );
+    if (!heading) return;
+    for (let el = heading.nextElementSibling; el && el.tagName !== "H1"; el = el.nextElementSibling) {
+      if (el.tagName === "TABLE") {
+        el.querySelectorAll("tr").forEach((tr) => {
+          const cells = tr.querySelectorAll("td");
+          if (!cells.length) return; // header row (th) — not a field
+          const nameCell = cells[0];
+          const p = piiByColumn[nameCell.textContent.replace(/`/g, "").trim()];
+          if (p) nameCell.appendChild(makePiiMarker(p));
+        });
+        continue;
+      }
+      el.querySelectorAll("code").forEach((codeEl) => {
+        const p = piiByColumn[codeEl.textContent.trim()];
+        if (p) codeEl.after(makePiiMarker(p));
+      });
+    }
   }
 
   // Auto-show the first node (a dataset if available, else first concept)
