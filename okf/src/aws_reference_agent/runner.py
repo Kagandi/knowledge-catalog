@@ -25,6 +25,7 @@ from aws_reference_agent.agent import (
     build_git_options,
     build_source_options,
     build_web_options,
+    build_wiki_options,
 )
 from aws_reference_agent.bundle.index import regenerate_indexes
 from aws_reference_agent.git.repo import cleanup, open_checkout
@@ -35,6 +36,7 @@ from aws_reference_agent.tools.context import (
     clear_docs_state,
     clear_git_state,
     clear_web_state,
+    clear_wiki_state,
     get_docs_state,
     set_context,
     set_cube_state,
@@ -42,7 +44,9 @@ from aws_reference_agent.tools.context import (
     set_expected_concepts,
     set_git_state,
     set_web_state,
+    set_wiki_state,
 )
+from aws_reference_agent.wiki.reader import check_status, discover, resolve_dir
 from aws_reference_agent.verification import VerifyMode
 
 log = logging.getLogger(__name__)
@@ -270,6 +274,27 @@ def _build_git_user_message(
     )
 
 
+def _build_wiki_user_message(slug: str, max_files: int, max_bytes: int) -> str:
+    return (
+        f"Ingest wiki pages from the locally checked-out wiki below.\n\n"
+        f"Wiki slug: {slug}\n\n"
+        f"Hard limits enforced by the read_wiki_page tool — do not retry "
+        f"rejected paths:\n"
+        f"- Max pages you may read: {max_files}\n"
+        f"- Max bytes per page (longer pages are truncated): {max_bytes}\n\n"
+        f"Follow the wiki-ingestion workflow. Call `list_wiki_pages()` once "
+        f"to get the complete set of readable paths — you cannot read a path "
+        f"that is not in that listing. Then read the pages whose paths and "
+        f"titles suggest they describe this bundle's data (data dictionaries, "
+        f"field tables, metric definitions, query cookbooks) and fold what they "
+        f"say into the existing concept docs. Enrichment is the point of this "
+        f"pass: prefer augmenting an existing concept over minting a new "
+        f"reference. Remember that the catalog's schema wins over any wiki page "
+        f"that contradicts it, and flag aspirational or planned content "
+        f"accordingly."
+    )
+
+
 def _build_cube_user_message(base_url: str, max_reads: int) -> str:
     return (
         f"Ingest semantic metadata from the Cube.js deployment below.\n\n"
@@ -315,6 +340,11 @@ class ReferenceRunner:
         cube_token: str | None = None,
         cube_max_reads: int = 100,
         cube_timeout: float = 60.0,
+        wiki_root: Path | None = None,
+        wiki_scripts_dir: Path | None = None,
+        wiki_slugs: list[str] | None = None,
+        wiki_max_files: int = 200,
+        wiki_max_bytes: int = 40 * 1024,
         verbose: bool = False,
         verify_queries: str = VerifyMode.SCHEMA,
     ):
@@ -363,6 +393,12 @@ class ReferenceRunner:
         self.cube_max_reads = int(cube_max_reads)
         self.cube_timeout = float(cube_timeout)
 
+        self._wiki_root = Path(wiki_root) if wiki_root else None
+        self._wiki_scripts_dir = Path(wiki_scripts_dir) if wiki_scripts_dir else None
+        self._wiki_slugs = list(wiki_slugs or [])
+        self.wiki_max_files = int(wiki_max_files)
+        self.wiki_max_bytes = int(wiki_max_bytes)
+
         if self.cube_url:
             self._cube_source: Any = CubeSource(
                 base_url=self.cube_url,
@@ -391,6 +427,9 @@ class ReferenceRunner:
         )
         self._cube_options = (
             build_cube_options(model=model) if self.cube_url else None
+        )
+        self._wiki_options = (
+            build_wiki_options(model=model) if self._wiki_slugs else None
         )
 
     async def _drain(self, message: str, options, prefix: str) -> None:
@@ -558,6 +597,44 @@ class ReferenceRunner:
     def run_docs_pass(self) -> None:
         asyncio.run(self._run_docs_pass_async())
 
+    async def _run_wiki_pass_async(self) -> None:
+        if not self._wiki_options or not self._wiki_slugs:
+            return
+        for slug in self._wiki_slugs:
+            status = check_status(self._wiki_scripts_dir, self._wiki_root, slug)
+            if not status.get("content_present"):
+                log.info("Skipping wiki slug %s: no local content present", slug)
+                continue
+            wiki_dir = resolve_dir(self._wiki_scripts_dir, self._wiki_root, slug)
+            discovered = discover(wiki_dir, max_files=self.wiki_max_files)
+            set_wiki_state(
+                self._wiki_root,
+                self._wiki_scripts_dir,
+                slug,
+                wiki_dir,
+                discovered["manifest"],
+                max_files=self.wiki_max_files,
+                max_bytes=self.wiki_max_bytes,
+            )
+            try:
+                log.info(
+                    "Running wiki pass: slug=%s, %d page(s) discovered "
+                    "(%d dropped by max_files=%d)",
+                    slug,
+                    len(discovered["manifest"]),
+                    discovered["truncated_count"],
+                    self.wiki_max_files,
+                )
+                message = _build_wiki_user_message(
+                    slug, self.wiki_max_files, self.wiki_max_bytes
+                )
+                await self._drain(message, self._wiki_options, "wiki")
+            finally:
+                clear_wiki_state()
+
+    def run_wiki_pass(self) -> None:
+        asyncio.run(self._run_wiki_pass_async())
+
     async def _enrich_all_async(self, only: list[tuple[str, ...]] | None) -> int:
         concepts = self.source.list_concepts()
         if only is not None:
@@ -582,6 +659,9 @@ class ReferenceRunner:
         # Local docs land last: they are the most likely to be stale and the
         # most org-specific, so they augment rather than get augmented.
         await self._run_docs_pass_async()
+        # Wiki runs last: it is the least-authoritative external source and should
+        # layer on top of all Glue/Cube/git/web/docs enrichment already applied.
+        await self._run_wiki_pass_async()
 
         log.info("Regenerating index.md files in %s", self.bundle_root)
         # regenerate_indexes is sync and its synthesizer opens its own event

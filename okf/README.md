@@ -112,7 +112,7 @@ Install uv first if needed: `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
 ## How the reference agent works
 
-The reference agent runs in five passes. The **source pass** writes one OKF
+The reference agent runs in six passes. The **source pass** writes one OKF
 doc per concept the source advertises. With `--source glue` that is a Glue
 database plus its tables, using AWS Glue Data Catalog metadata, optionally
 augmented with a small Athena `LIMIT` sample of each table's rows. With
@@ -179,12 +179,35 @@ oversized ones; `--docs-include` / `--docs-exclude` take globs against the
 root-relative path. This pass needs **no IAM and no network** — the IAM
 policy below is unchanged by it.
 
-The docs pass runs last, after the web and git passes, because local documents are
-the most likely to be stale. It is enrichment-first: documents augment
+The docs pass runs after the web and git passes, because local documents are
+the most likely to be stale — though the new wiki pass below now runs after
+it. It is enrichment-first: documents augment
 existing concept docs (field descriptions folded into `# Schema`, metrics
 into `references/metrics/`, joins into `references/joins/`) rather than
 becoming concepts of their own. Where a document contradicts the catalog,
 the catalog's schema wins and the discrepancy is recorded in prose.
+
+The **wiki pass** pulls enrichment context from a curated `bu-wikis`
+knowledge base instead of an ad hoc local folder: point `--wiki-slug` at one
+or more wiki slugs (e.g. `amazon`), `--wiki-root` at a local `bu-wikis` git
+clone, and `--wiki-scripts-dir` at the `wiki-builder` skill's `scripts/`
+directory (`query_wiki.sh`, `checkout_wiki_local.sh`). For each slug the
+agent calls `list_wiki_pages()` once to get the complete set of readable
+pages under that wiki's `wiki/` subtree (never `raw/`, `derived/`, `logs/`,
+`wiki.config.md`, or `sources.md` — those aren't compiled pages), then reads
+the promising ones with `read_wiki_page`, which always reads through the
+wiki-builder skill's own sanctioned agent-mode script rather than the
+filesystem directly. `--wiki-max-files` caps how many pages it may read and
+`--wiki-max-bytes` truncates oversized ones. A slug with no local content
+present (`content_present=false` from the wiki-builder status check) is
+skipped with a log line rather than failing the run — useful when listing
+slugs speculatively. Multiple `--wiki-slug` flags run sequentially, one full
+sub-agent turn per slug, each with its own budget. The wiki pass runs last
+of all six passes: wiki content is external and the least authoritative
+source in the pipeline, so it layers on top of everything else. As with the
+docs pass, the catalog's own schema wins on any conflict, and wiki content
+describing target/aspirational state (rather than what's actually built) is
+flagged as such in cited prose instead of presented as settled fact.
 
 The **cube pass** layers a Cube.js semantic layer over a bundle built from
 another source (typically Glue): point `--cube-url` at the deployment and the
@@ -204,7 +227,7 @@ source. Auth, when the deployment requires it, is a Cube JWT supplied via the
 `CUBEJS_API_TOKEN` environment variable and sent as the `Authorization` header;
 **no token is passed on the command line or stored by this tool.**
 
-All four augmenting passes are confined to enrichment by `write_concept_doc`,
+All five augmenting passes are confined to enrichment by `write_concept_doc`,
 not just by prompt wording. They may **create** documents only under
 `references/`; any other id must already exist on disk. Without that
 guard an ingested document describing a table the catalog does not have
@@ -217,8 +240,9 @@ recognise them (both sides of a documented join, say) but they get no
 document and must not be linked.
 
 Use `--no-web` to skip the web pass, `--no-git` to skip the git pass,
-`--no-docs` to skip the docs pass, `--no-cube` to skip the cube pass, and
-`--no-sample` to skip Athena row sampling.
+`--no-docs` to skip the docs pass, `--no-cube` to skip the cube pass,
+`--no-wiki` to skip the wiki pass, and `--no-sample` to skip Athena row
+sampling.
 
 ## Query verification
 
@@ -480,6 +504,39 @@ uv run aws-reference-agent enrich \
 The cube pass is skipped automatically when `--source cube` is active (it would
 be redundant), and `--no-cube` skips it even when `--cube-url` is set.
 
+### Wiki enrichment (bu-wikis)
+
+The wiki pass reads from a local clone of `bu-wikis`, through the
+`wiki-builder` skill's own non-interactive read mode rather than a raw
+filesystem walk. Two prerequisites, both machine-specific and passed as
+explicit flags (there is no auto-discovery):
+
+- a local `bu-wikis` clone with the target wiki's content already checked
+  out — `--wiki-root` (default `~/bu-wikis`);
+- the `wiki-builder` skill's `scripts/` directory — `--wiki-scripts-dir`
+  (e.g. `~/Projects/agentic-fleet/packages/shared/.apm/skills/wiki-builder/scripts`).
+
+Scope to one table and one wiki slug first:
+
+```
+uv run aws-reference-agent enrich \
+    --source glue \
+    --database <glue-database-name> \
+    --concept tables/<table-name> \
+    --no-web --no-git --no-docs --no-cube --no-sample \
+    --wiki-slug amazon \
+    --wiki-root ~/bu-wikis \
+    --wiki-scripts-dir ~/Projects/agentic-fleet/packages/shared/.apm/skills/wiki-builder/scripts \
+    --out /tmp/okf-wiki-smoke \
+    -v
+```
+
+In the `-v` log, expect one `list_wiki_pages` call followed by
+`read_wiki_page` calls for the pages the agent selected. Repeat `--wiki-slug`
+to pull from more than one wiki in the same run — each slug gets its own
+sub-agent turn and its own `--wiki-max-files`/`--wiki-max-bytes` budget, so
+cost scales roughly linearly with the number of slugs.
+
 Then widen to the whole database with all passes on:
 
 ```
@@ -494,6 +551,8 @@ uv run aws-reference-agent enrich \
     --git-repo git@github.com:<org>/<warehouse>.git \
     --cube-url http://semantic-layer.prod.beamup.ai \
     --docs-root ./docs \
+    --wiki-slug amazon \
+    --wiki-scripts-dir ~/Projects/agentic-fleet/packages/shared/.apm/skills/wiki-builder/scripts \
     --out ./bundles/<name>
 ```
 
@@ -517,6 +576,12 @@ Notes on the optional flags:
   a cold deployment's schema recompile runs long.
 - `--docs-root` needs no credentials. A nonexistent or non-directory path
   is a hard error rather than a silently skipped pass.
+- `--wiki-slug` enables the wiki pass (repeatable). `--wiki-root` and
+  `--wiki-scripts-dir` are required whenever a slug is given, and a
+  nonexistent directory for either is a hard error. A slug with no local
+  content checked out is skipped with a log line, not an error.
+  `--wiki-max-files` (default 200) and `--wiki-max-bytes` (default 40960)
+  bound the read; `--no-wiki` skips the pass even when `--wiki-slug` is set.
 - `--git-repo` needs no AWS credentials, and no git credentials beyond what
   your shell already has. It is deliberately **not** prechecked as a
   directory, since a remote URL is the primary case; an unreachable target

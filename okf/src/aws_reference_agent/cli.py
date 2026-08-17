@@ -230,6 +230,43 @@ def _parser() -> argparse.ArgumentParser:
         help="Skip the docs pass entirely, even if --docs-root is given.",
     )
     enrich.add_argument(
+        "--wiki-slug",
+        action="append",
+        default=None,
+        help="bu-wikis slug to pull enrichment context from (e.g. 'amazon'). "
+        "Enables the wiki pass. Repeatable.",
+    )
+    enrich.add_argument(
+        "--wiki-root",
+        type=Path,
+        default=Path.home() / "bu-wikis",
+        help="Local bu-wikis git clone to read from.",
+    )
+    enrich.add_argument(
+        "--wiki-scripts-dir",
+        type=Path,
+        default=None,
+        help="Path to the wiki-builder skill's scripts/ directory "
+        "(query_wiki.sh, checkout_wiki_local.sh). Required when --wiki-slug is given.",
+    )
+    enrich.add_argument(
+        "--wiki-max-files",
+        type=int,
+        default=200,
+        help="Hard cap on wiki pages the wiki agent may read in one run (default 200).",
+    )
+    enrich.add_argument(
+        "--wiki-max-bytes",
+        type=int,
+        default=40 * 1024,
+        help="Per-page byte cap; longer pages are truncated (default 40960).",
+    )
+    enrich.add_argument(
+        "--no-wiki",
+        action="store_true",
+        help="Skip the wiki pass entirely.",
+    )
+    enrich.add_argument(
         "--git-repo",
         action="append",
         default=None,
@@ -382,6 +419,14 @@ def main(argv: list[str] | None = None) -> int:
         for d in docs_roots:
             if not d.is_dir():
                 raise SystemExit(f"--docs-root is not an existing directory: {d}")
+        wiki_slugs = [] if args.no_wiki else list(args.wiki_slug or [])
+        if wiki_slugs:
+            if not args.wiki_scripts_dir:
+                raise SystemExit("--wiki-scripts-dir is required when --wiki-slug is given")
+            if not args.wiki_scripts_dir.is_dir():
+                raise SystemExit(f"--wiki-scripts-dir does not exist: {args.wiki_scripts_dir}")
+            if not args.wiki_root.is_dir():
+                raise SystemExit(f"--wiki-root does not exist: {args.wiki_root}")
         # No is_dir() precheck for --git-repo: the value is legitimately either a
         # path or a URL, so validation belongs in open_checkout.
         # Cube pass: enabled when --cube-url is set AND --source is not cube AND
@@ -419,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
             cube_token=cube_token,
             cube_max_reads=args.cube_max_reads,
             cube_timeout=args.cube_timeout,
+            wiki_root=args.wiki_root,
+            wiki_scripts_dir=args.wiki_scripts_dir,
+            wiki_slugs=wiki_slugs,
+            wiki_max_files=args.wiki_max_files,
+            wiki_max_bytes=args.wiki_max_bytes,
             verbose=args.verbose,
             verify_queries=args.verify_queries,
         )
@@ -443,9 +493,14 @@ def main(argv: list[str] | None = None) -> int:
             if cube_url_for_pass
             else "; cube pass skipped"
         )
+        wiki_note = (
+            f"; wiki pass read from slug(s): {', '.join(wiki_slugs)}"
+            if wiki_slugs
+            else "; wiki pass skipped"
+        )
         print(
             f"Enriched {n} concept(s) into {args.out}"
-            f"{web_note}{git_note}{cube_note}{docs_note}",
+            f"{web_note}{git_note}{cube_note}{docs_note}{wiki_note}",
             file=sys.stderr,
         )
         return 0

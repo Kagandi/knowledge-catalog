@@ -73,11 +73,25 @@ class CubeState:
     read_count: int = 0
 
 
+@dataclass
+class WikiState:
+    wiki_root: Path
+    scripts_dir: Path
+    slug: str
+    wiki_dir: Path
+    manifest: dict[str, dict[str, object]]
+    max_files: int
+    max_bytes: int
+    read: set[str] = field(default_factory=set)
+    read_count: int = 0
+
+
 _ctx: ToolContext | None = None
 _web: WebState | None = None
 _docs: DocsState | None = None
 _git: GitState | None = None
 _cube: CubeState | None = None
+_wiki: WikiState | None = None
 
 
 def set_context(
@@ -263,6 +277,46 @@ def is_cube_pass() -> bool:
     return _cube is not None
 
 
+def set_wiki_state(
+    wiki_root: Path,
+    scripts_dir: Path,
+    slug: str,
+    wiki_dir: Path,
+    manifest: dict[str, dict[str, object]],
+    *,
+    max_files: int,
+    max_bytes: int,
+) -> None:
+    global _wiki
+    _wiki = WikiState(
+        wiki_root=Path(wiki_root),
+        scripts_dir=Path(scripts_dir),
+        slug=slug,
+        wiki_dir=Path(wiki_dir),
+        manifest=manifest,
+        max_files=int(max_files),
+        max_bytes=int(max_bytes),
+    )
+
+
+def get_wiki_state() -> WikiState:
+    if _wiki is None:
+        raise RuntimeError(
+            "Wiki state not set. Call set_wiki_state() before invoking the wiki agent."
+        )
+    return _wiki
+
+
+def clear_wiki_state() -> None:
+    global _wiki
+    _wiki = None
+
+
+def is_wiki_pass() -> bool:
+    """True while the runner is executing the wiki-ingestion pass."""
+    return _wiki is not None
+
+
 def is_augmenting_pass() -> bool:
     """True during any pass that augments docs the source pass already wrote.
 
@@ -270,7 +324,7 @@ def is_augmenting_pass() -> bool:
     web pass alone, so a new ingestion pass cannot silently shrink a table
     doc's schema or provenance.
     """
-    return is_web_pass() or is_docs_pass() or is_git_pass() or is_cube_pass()
+    return is_web_pass() or is_docs_pass() or is_git_pass() or is_cube_pass() or is_wiki_pass()
 
 
 def get_verify_mode() -> str:

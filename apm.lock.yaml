@@ -1,0 +1,8 @@
+lockfile_version: '1'
+generated_at: '2026-08-17T11:11:21.499384+00:00'
+dependencies: []
+local_deployed_files:
+- .claude/skills/okf-catalog
+- .claude/skills/okf-catalog/SKILL.md
+local_deployed_file_hashes:
+  .claude/skills/okf-catalog/SKILL.md: sha256:b10c990dcb6af329d72984a456ee0cf188ac6ae562759b7fbf6ff6be7d0cb323
